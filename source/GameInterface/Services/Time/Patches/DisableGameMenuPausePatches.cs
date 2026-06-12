@@ -6,6 +6,7 @@ using System.Reflection.Emit;
 using System.Reflection;
 using TaleWorlds.CampaignSystem.GameMenus;
 using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.Encounters;
 using TaleWorlds.CampaignSystem.GameState;
 using TaleWorlds.Core;
 using SandBox;
@@ -27,6 +28,10 @@ internal static class DisableGameMenuPausePatches
             AccessTools.Method(typeof(GameMenu), nameof(GameMenu.SwitchToMenu)),
             AccessTools.Method(typeof(MapScreen), "HandleLeftMouseButtonClick"),
             AccessTools.Method(typeof(MapScreen), "HandleMouse"),
+            // Retreating from a battle ends in PlayerEncounter.Finish, which stops campaign time
+            // directly (its menus are already covered above) - the lone unpatched pause in the
+            // retreat flow (#1253). Time control is server-authoritative in coop.
+            AccessTools.Method(typeof(PlayerEncounter), nameof(PlayerEncounter.Finish)),
         };
     }
 
