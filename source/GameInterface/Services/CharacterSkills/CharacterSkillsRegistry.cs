@@ -1,39 +1,61 @@
-﻿using GameInterface.Registry;
-using System.Linq;
-using System.Threading;
+using GameInterface.Registry.Auto;
+using GameInterface.Services.ObjectManager;
+using Serilog;
+using System;
+using System.Collections.Generic;
+using System.Reflection;
 using TaleWorlds.Core;
 using TaleWorlds.ObjectSystem;
 
 namespace GameInterface.Services.CharacterSkills
 {
-    internal class CharacterSkillsRegistry : RegistryBase<MBCharacterSkills>
+    /// <summary>
+    /// Registry for <see cref="MBCharacterSkills"/> type
+    /// </summary>
+    /// <remarks>
+    /// Character skill sets are a static catalog loaded from XML on every instance before the co-op session
+    /// starts, so they are registered by their existing StringId and no creation/destruction is patched.
+    /// </remarks>
+    internal class CharacterSkillsRegistry : AutoRegistryBase<MBCharacterSkills>
     {
-        private const string IdPrefix = "CoopCharacterSkills";
-        private static int InstanceCounter = 0;
-
-        public CharacterSkillsRegistry(IRegistryCollection collection) : base(collection)
+        public CharacterSkillsRegistry(ILogger logger, IAutoRegistryFactory autoRegistryFactory, IObjectManager objectManager)
+            : base(logger, autoRegistryFactory, objectManager)
         {
         }
 
-        public override void RegisterAll()
-        {
-            var objectManager = MBObjectManager.Instance;
+        public override IEnumerable<MethodBase> Constructors => Array.Empty<MethodBase>();
 
-            if (objectManager == null)
+        public override IEnumerable<MethodBase> DestroyMethods => Array.Empty<MethodBase>();
+
+        public override void RegisterAllObjects()
+        {
+            var mbObjectManager = MBObjectManager.Instance;
+            if (mbObjectManager == null)
             {
-                Logger.Error("Unable to register objects when CampaignObjectManager is null");
+                Logger.Error("Unable to register objects when MBObjectManager is null");
                 return;
             }
 
-            foreach (var skill in objectManager.GetObjectTypeList<MBCharacterSkills>())
+            foreach (var skill in mbObjectManager.GetObjectTypeList<MBCharacterSkills>())
             {
-                RegisterExistingObject(skill.StringId, skill);
+                objectManager.AddExisting(skill.StringId, skill);
             }
         }
 
-        protected override string GetNewId(MBCharacterSkills obj)
+        public override void OnClientCreated(MBCharacterSkills obj, string id)
         {
-            return $"{IdPrefix}_{Interlocked.Increment(ref InstanceCounter)}";
+        }
+
+        public override void OnClientDestroyed(MBCharacterSkills obj, string id)
+        {
+        }
+
+        public override void OnServerCreated(MBCharacterSkills obj, string id)
+        {
+        }
+
+        public override void OnServerDestroyed(MBCharacterSkills obj, string id)
+        {
         }
     }
 }

@@ -1,39 +1,61 @@
-﻿using GameInterface.Registry;
-using System.Linq;
-using System.Threading;
+using GameInterface.Registry.Auto;
+using GameInterface.Services.ObjectManager;
+using Serilog;
+using System;
+using System.Collections.Generic;
+using System.Reflection;
 using TaleWorlds.Core;
 using TaleWorlds.ObjectSystem;
 
 namespace GameInterface.Services.EquipmentRoster
 {
-    internal class EquipmentRosterRegistry : RegistryBase<MBEquipmentRoster>
+    /// <summary>
+    /// Registry for <see cref="MBEquipmentRoster"/> type
+    /// </summary>
+    /// <remarks>
+    /// Equipment rosters are a static catalog loaded from XML on every instance before the co-op session
+    /// starts, so they are registered by their existing StringId and no creation/destruction is patched.
+    /// </remarks>
+    internal class EquipmentRosterRegistry : AutoRegistryBase<MBEquipmentRoster>
     {
-        private const string IdPrefix = "CoopEquipmentRoster";
-        private static int InstanceCounter = 0;
-
-        public EquipmentRosterRegistry(IRegistryCollection collection) : base(collection)
+        public EquipmentRosterRegistry(ILogger logger, IAutoRegistryFactory autoRegistryFactory, IObjectManager objectManager)
+            : base(logger, autoRegistryFactory, objectManager)
         {
         }
 
-        public override void RegisterAll()
-        {
-            var objectManager = MBObjectManager.Instance;
+        public override IEnumerable<MethodBase> Constructors => Array.Empty<MethodBase>();
 
-            if (objectManager == null)
+        public override IEnumerable<MethodBase> DestroyMethods => Array.Empty<MethodBase>();
+
+        public override void RegisterAllObjects()
+        {
+            var mbObjectManager = MBObjectManager.Instance;
+            if (mbObjectManager == null)
             {
-                Logger.Error("Unable to register objects when CampaignObjectManager is null");
+                Logger.Error("Unable to register objects when MBObjectManager is null");
                 return;
             }
 
-            foreach (var equipRoster in objectManager.GetObjectTypeList<MBEquipmentRoster>())
+            foreach (var equipRoster in mbObjectManager.GetObjectTypeList<MBEquipmentRoster>())
             {
-                RegisterExistingObject(equipRoster.StringId, equipRoster);
+                objectManager.AddExisting(equipRoster.StringId, equipRoster);
             }
         }
 
-        protected override string GetNewId(MBEquipmentRoster obj)
+        public override void OnClientCreated(MBEquipmentRoster obj, string id)
         {
-            return $"{IdPrefix}_{Interlocked.Increment(ref InstanceCounter)}";
+        }
+
+        public override void OnClientDestroyed(MBEquipmentRoster obj, string id)
+        {
+        }
+
+        public override void OnServerCreated(MBEquipmentRoster obj, string id)
+        {
+        }
+
+        public override void OnServerDestroyed(MBEquipmentRoster obj, string id)
+        {
         }
     }
 }

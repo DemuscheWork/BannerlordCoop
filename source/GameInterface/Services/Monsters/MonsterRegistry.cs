@@ -1,9 +1,9 @@
-﻿using GameInterface.Registry;
+using GameInterface.Registry.Auto;
+using GameInterface.Services.ObjectManager;
+using Serilog;
 using System;
-using System.Threading;
-using TaleWorlds.CampaignSystem;
-using TaleWorlds.CampaignSystem.Settlements;
-using TaleWorlds.CampaignSystem.Settlements.Buildings;
+using System.Collections.Generic;
+using System.Reflection;
 using TaleWorlds.Core;
 using TaleWorlds.ObjectSystem;
 
@@ -12,23 +12,49 @@ namespace GameInterface.Services.Monsters;
 /// <summary>
 /// Registry for <see cref="Monster"/> type
 /// </summary>
-internal class MonsterRegistry : RegistryBase<Monster>
+/// <remarks>
+/// Monsters are a static catalog loaded from XML on every instance before the co-op session starts, so they
+/// are registered by their existing StringId and no creation/destruction is patched.
+/// </remarks>
+internal class MonsterRegistry : AutoRegistryBase<Monster>
 {
-    private const string MonsterIdPrefix = "CoopMonster";
-    private static int InstanceCounter = 0;
-
-    public MonsterRegistry(IRegistryCollection collection) : base(collection) { }
-
-    public override void RegisterAll()
+    public MonsterRegistry(ILogger logger, IAutoRegistryFactory autoRegistryFactory, IObjectManager objectManager)
+        : base(logger, autoRegistryFactory, objectManager)
     {
-        foreach (Monster monster in MBObjectManager.Instance.GetObjectTypeList<Monster>())
+    }
+
+    public override IEnumerable<MethodBase> Constructors => Array.Empty<MethodBase>();
+
+    public override IEnumerable<MethodBase> DestroyMethods => Array.Empty<MethodBase>();
+
+    public override void RegisterAllObjects()
+    {
+        var mbObjectManager = MBObjectManager.Instance;
+        if (mbObjectManager == null)
         {
-            RegisterExistingObject(monster.StringId, monster);
+            Logger.Error("Unable to register objects when MBObjectManager is null");
+            return;
+        }
+
+        foreach (Monster monster in mbObjectManager.GetObjectTypeList<Monster>())
+        {
+            objectManager.AddExisting(monster.StringId, monster);
         }
     }
 
-    protected override string GetNewId(Monster obj)
+    public override void OnClientCreated(Monster obj, string id)
     {
-        return $"{MonsterIdPrefix}_{Interlocked.Increment(ref InstanceCounter)}";
+    }
+
+    public override void OnClientDestroyed(Monster obj, string id)
+    {
+    }
+
+    public override void OnServerCreated(Monster obj, string id)
+    {
+    }
+
+    public override void OnServerDestroyed(Monster obj, string id)
+    {
     }
 }

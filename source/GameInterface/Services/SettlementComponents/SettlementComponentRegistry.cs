@@ -1,39 +1,60 @@
-﻿using GameInterface.Registry;
+using GameInterface.Registry.Auto;
+using GameInterface.Services.ObjectManager;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
+using System.Reflection;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Core;
 
 namespace GameInterface.Services.SettlementComponents;
-internal class SettlementComponentRegistry : RegistryBase<SettlementComponent>
-{
-    private const string SettlementComponentIdPrefix = "CoopSettlementComponent";
-    private int InstanceCounter = 0;
 
-    public SettlementComponentRegistry(IRegistryCollection collection) : base(collection)
+/// <summary>
+/// Registry for <see cref="SettlementComponent"/> type
+/// </summary>
+/// <remarks>
+/// Settlement components (fiefs, villages, hideouts) are created during campaign load on every instance,
+/// so they are registered by their existing StringId and no creation/destruction is patched.
+/// </remarks>
+internal class SettlementComponentRegistry : AutoRegistryBase<SettlementComponent>
+{
+    public SettlementComponentRegistry(ILogger logger, IAutoRegistryFactory autoRegistryFactory, IObjectManager objectManager)
+        : base(logger, autoRegistryFactory, objectManager)
     {
     }
 
-    public override void RegisterAll()
+    public override IEnumerable<MethodBase> Constructors => Array.Empty<MethodBase>();
+
+    public override IEnumerable<MethodBase> DestroyMethods => Array.Empty<MethodBase>();
+
+    public override void RegisterAllObjects()
     {
         List<SettlementComponent> settlementComponents = new List<SettlementComponent>();
 
         settlementComponents.AddRange(Town.AllFiefs);
         settlementComponents.AddRange(Village.All);
         settlementComponents.AddRange(Hideout.All);
-        
+
         foreach (var settlementComponent in settlementComponents.DistinctBy(comp => comp.StringId))
         {
-            var networkId = settlementComponent.StringId;
-
-            RegisterExistingObject(networkId, settlementComponent);
+            objectManager.AddExisting(settlementComponent.StringId, settlementComponent);
         }
     }
 
-    protected override string GetNewId(SettlementComponent obj)
+    public override void OnClientCreated(SettlementComponent obj, string id)
     {
-        return $"{SettlementComponentIdPrefix}_{Interlocked.Increment(ref InstanceCounter)}";
+    }
+
+    public override void OnClientDestroyed(SettlementComponent obj, string id)
+    {
+    }
+
+    public override void OnServerCreated(SettlementComponent obj, string id)
+    {
+    }
+
+    public override void OnServerDestroyed(SettlementComponent obj, string id)
+    {
     }
 }
