@@ -201,7 +201,36 @@ internal class BattleHandler : IHandler
             position = battle.DefenderSide.LeaderParty.Position;
             rec2.PatchEncounterDir = (v2 - position.ToVec2()).Normalized();
 
-            CampaignMission.OpenBattleMission(rec2);
+            // Mission dispatch mirrors the field-battle branch of vanilla
+            // MenuHelper.EncounterAttackConsequence: naval encounters and caravan/villager
+            // defenders open their dedicated missions instead of the plain field battle
+            bool isCaravanEncounter = MapEvent.PlayerMapEvent.PartiesOnSide(BattleSideEnum.Defender)
+                .Any(involvedParty => involvedParty.Party.IsMobile &&
+                    (involvedParty.Party.MobileParty.IsCaravan ||
+                     (involvedParty.Party.Owner != null && involvedParty.Party.Owner.IsMerchant)));
+            bool isVillagerEncounter = MapEvent.PlayerMapEvent.MapEventSettlement == null &&
+                MapEvent.PlayerMapEvent.PartiesOnSide(BattleSideEnum.Defender)
+                    .Any(involvedParty => involvedParty.Party.IsMobile && involvedParty.Party.MobileParty.IsVillager);
+
+            if (isNavalEncounter)
+            {
+                CampaignMission.OpenNavalBattleMission(rec2);
+            }
+            else if (isCaravanEncounter || isVillagerEncounter)
+            {
+                CampaignMission.OpenCaravanBattleMission(rec2, isCaravanEncounter);
+            }
+            else
+            {
+                CampaignMission.OpenBattleMission(rec2);
+            }
+
+            // Vanilla tail: the encounter gets a fresh CampaignBattleResult for the mission's
+            // outcome and the map event enters its waiting state; without these the client's
+            // encounter/map-event state diverges from vanilla once the mission opens. The
+            // State write goes through the regular MapEvent sync layer like any vanilla call.
+            PlayerEncounter.StartAttackMission();
+            MapEvent.PlayerMapEvent.BeginWait();
         }
         catch (Exception e)
         {
