@@ -123,19 +123,23 @@ internal class BattleHandler : IHandler
             side.MakeReadyForMission(null);
         }
 
-        var message = new NetworkStartAttackMission();
+        // The terrain seed is rolled here on the server and carried in the message,
+        // so every machine generates the same battle terrain for this map event
+        var message = new NetworkStartAttackMission(MBRandom.RandomInt(10000));
         network.Send(payload.Who as NetPeer, message);
     }
 
     private void Handle_NetworkStartAttackMission(MessagePayload<NetworkStartAttackMission> payload)
     {
+        var terrainSeed = payload.What.TerrainSeed;
+
         // Opening a mission pushes a screen, and ScreenManager only tolerates screen
         // changes from the main thread; doing it from the network thread races its
         // layer lists and crashes the game.
-        GameLoopRunner.RunOnMainThread(OpenAttackMission);
+        GameLoopRunner.RunOnMainThread(() => OpenAttackMission(terrainSeed));
     }
 
-    private static void OpenAttackMission()
+    private static void OpenAttackMission(int terrainSeed)
     {
         try
         {
@@ -190,8 +194,7 @@ internal class BattleHandler : IHandler
             rec2.NeedsRandomTerrain = false;
             rec2.PlayingInCampaignMode = true;
 
-            // TODO make this server side
-            rec2.RandomTerrainSeed = MBRandom.RandomInt(10000);
+            rec2.RandomTerrainSeed = terrainSeed;
             rec2.AtmosphereOnCampaign = Campaign.Current.Models.MapWeatherModel.GetAtmosphereModel(MobileParty.MainParty.Position);
             rec2.SceneHasMapPatch = true;
             rec2.DecalAtlasGroup = 2;
