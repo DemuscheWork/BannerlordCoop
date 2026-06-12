@@ -1,4 +1,5 @@
 using Common;
+using Coop.Core.Server.Services.MobileParties.Messages;
 using Coop.IntegrationTests.Environment;
 using GameInterface.Services.MobileParties.Messages.Behavior;
 
@@ -45,6 +46,35 @@ namespace Coop.IntegrationTests.MobileParties
             {
                 Assert.Equal(1, client.InternalMessages.GetMessageCount<PartyEnterSettlement>());
             }
+        }
+
+        /// <summary>
+        /// Verify that the repeated StartSettlementEncounterAttempted publishes produced while the
+        /// server round-trip is in flight (the patched client suppresses the real encounter start,
+        /// so vanilla re-attempts it every tick) collapse into a single request to the server
+        /// instead of flooding it.
+        /// </summary>
+        [Fact]
+        public void RepeatedEnterSettlementAttempts_SendSingleRequest()
+        {
+            // Arrange
+            var client1 = TestEnvironment.Clients.First();
+
+            // The message is published on client1, so its handler resolves the objects
+            // through client1's object manager - the message must carry client1's instances.
+            var party = client1.CreateRegisteredObject<MobileParty>("party1");
+            var settlement = client1.CreateRegisteredObject<Settlement>("settlement1");
+
+            var message = new StartSettlementEncounterAttempted(party, settlement);
+
+            // Act
+            for (int i = 0; i < 100; i++)
+            {
+                client1.SimulateMessage(this, message);
+            }
+
+            // Assert
+            Assert.Equal(1, client1.NetworkSentMessages.GetMessageCount<NetworkRequestStartSettlementEncounter>());
         }
 
         /// <summary>

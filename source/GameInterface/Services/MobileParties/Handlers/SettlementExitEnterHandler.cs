@@ -104,6 +104,12 @@ internal class SettlementExitEnterHandler : IHandler
 
         GameLoopRunner.RunOnMainThread(() =>
         {
+            // The check above runs on the network thread, so several queued duplicate approvals
+            // can all pass it before the first one starts the encounter here; re-check where the
+            // encounter is actually created or each extra approval starts an encounter on top of
+            // the open one.
+            if (PlayerEncounter.Current != null) return;
+
             using (new AllowedThread())
             {
                 PlayerEncounter.Start();
