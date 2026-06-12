@@ -7,6 +7,7 @@ using Common.Util;
 using GameInterface.Services.MapEvents.Messages.Conversation;
 using GameInterface.Services.MobileParties.Extensions;
 using GameInterface.Services.ObjectManager;
+using GameInterface.Utils;
 using HarmonyLib;
 using LiteNetLib;
 using Serilog;
@@ -259,6 +260,15 @@ internal class ConversationRequestHandler : IHandler
     {
         var message = payload.What;
 
+        // RestartPlayerEncounter reopens the encounter menu, which only tolerates the main
+        // thread. Everything is resolved inside the deferred action since the encounter
+        // state can change while the approval is queued.
+        GameThreadDispatcher.RunOnGameThread(nameof(NetworkAllowConversation), () => RestartApprovedEncounter(message));
+    }
+
+    /// <summary>[Client, game thread] Re-validates the approval and re-runs the encounter restart.</summary>
+    private void RestartApprovedEncounter(NetworkAllowConversation message)
+    {
         if (!objectManager.TryGetObjectWithLogging<PartyBase>(message.DefenderId, out var defender))
         {
             SendConversationEndedToServer();

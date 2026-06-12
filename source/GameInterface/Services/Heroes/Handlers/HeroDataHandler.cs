@@ -7,6 +7,7 @@ using GameInterface.Services.ObjectManager;
 using GameInterface.Services.Template.Handlers;
 using GameInterface.Services.Template.Messages;
 using GameInterface.Services.Template.Patches;
+using GameInterface.Utils;
 using SandBox.GauntletUI;
 using Serilog;
 using System;
@@ -43,22 +44,28 @@ internal class HeroDataHandler : IHandler
     {
         var data = payload.What.Data;
 
-        if (objectManager.TryGetObject<Hero>(data.HeroStringId, out var hero) == false)
+        // ChangeHeroName is published synchronously from network handlers, and the rename reads
+        // ScreenManager.TopScreen, which only tolerates the main thread; the hero is re-resolved
+        // inside the deferred action.
+        GameThreadDispatcher.RunOnGameThread(nameof(ChangeHeroName), () =>
         {
-            Logger.Error("Unable to get {type} from id {stringId}", typeof(Hero), data.HeroStringId);
-            return;
-        }
+            if (objectManager.TryGetObject<Hero>(data.HeroStringId, out var hero) == false)
+            {
+                Logger.Error("Unable to get {type} from id {stringId}", typeof(Hero), data.HeroStringId);
+                return;
+            }
 
-        var fullName = new TextObject(data.FullName);
-        var firstName = new TextObject(data.FirstName);
+            var fullName = new TextObject(data.FullName);
+            var firstName = new TextObject(data.FirstName);
 
-        HeroDataPatches.SetNameOverride(hero, fullName, firstName);
+            HeroDataPatches.SetNameOverride(hero, fullName, firstName);
 
-        InformationManager.DisplayMessage(new InformationMessage($"Changed hero name to {fullName}"));
+            InformationManager.DisplayMessage(new InformationMessage($"Changed hero name to {fullName}"));
 
-        if (ScreenManager.TopScreen is GauntletClanScreen clanScreen)
-        {
-            clanScreen._dataSource?.RefreshValues();
-        }
+            if (ScreenManager.TopScreen is GauntletClanScreen clanScreen)
+            {
+                clanScreen._dataSource?.RefreshValues();
+            }
+        });
     }
 }

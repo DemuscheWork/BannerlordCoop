@@ -14,6 +14,7 @@ using GameInterface.Services.MapEvents.Messages.Leave;
 using GameInterface.Services.MapEvents.Messages.Start;
 using GameInterface.Services.ObjectManager;
 using GameInterface.Services.Players;
+using GameInterface.Utils;
 using LiteNetLib;
 using Serilog;
 using System;
@@ -113,18 +114,34 @@ internal class BattleHandler : IHandler
 
     private void Handle_NetworkAttackMissionAttempted(MessagePayload<NetworkAttackMissionAttempted> payload)
     {
-        if (!objectManager.TryGetObject(payload.What.MapEventId, out MapEvent mapEvent))
+        var mapEventId = payload.What.MapEventId;
+        var requestingPeer = payload.Who as NetPeer;
+
+        // MakeReadyForMission mutates the map event's sides, which races the campaign tick when
+        // done from the network thread. The map event is re-resolved inside the deferred action
+        // since it can be finalized while the work is queued; the mission-start reply may only go
+        // out once the sides are actually mission-ready, hence blocking.
+        var madeReady = false;
+        GameThreadDispatcher.RunOnGameThread(nameof(NetworkAttackMissionAttempted), () =>
+        {
+            if (!objectManager.TryGetObject(mapEventId, out MapEvent mapEvent))
+                return;
+
+            mapEventLogger.DebugMapEvent(mapEvent, "Handling network attack mission attempted for map event. Making sides mission-ready and replying with mission start");
+
+            foreach (var side in mapEvent._sides)
+            {
+                side.MakeReadyForMission(null);
+            }
+
+            madeReady = true;
+        }, blocking: true);
+
+        if (!madeReady)
             return;
 
-        mapEventLogger.DebugMapEvent(mapEvent, "Handling network attack mission attempted for map event. Making sides mission-ready and replying with mission start");
-
-        foreach(var side in mapEvent._sides)
-        {
-            side.MakeReadyForMission(null);
-        }
-
         var message = new NetworkStartAttackMission();
-        network.Send(payload.Who as NetPeer, message);
+        network.Send(requestingPeer, message);
     }
 
     private void Handle_NetworkStartAttackMission(MessagePayload<NetworkStartAttackMission> payload)

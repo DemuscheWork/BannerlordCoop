@@ -5,6 +5,7 @@ using Common.Network;
 using GameInterface.Services.Clans.Messages;
 using GameInterface.Services.Clans.Patches;
 using GameInterface.Services.ObjectManager;
+using GameInterface.Utils;
 using SandBox.GauntletUI;
 using Serilog;
 using TaleWorlds.CampaignSystem;
@@ -49,25 +50,30 @@ namespace GameInterface.Services.Clans.Handlers
         {
             var payload = obj.What;
 
-            if (objectManager.TryGetObject<Clan>(payload.ClanId, out var clan) == false)
+            // The name change mutates game state and reads ScreenManager.TopScreen, which only
+            // tolerate the main thread; the clan is re-resolved inside the deferred action.
+            GameThreadDispatcher.RunOnGameThread(nameof(NetworkChangeClanName), () =>
             {
-                Logger.Error("Unable to find clan ({clanId})", payload.ClanId);
-                return;
-            }
+                if (objectManager.TryGetObject<Clan>(payload.ClanId, out var clan) == false)
+                {
+                    Logger.Error("Unable to find clan ({clanId})", payload.ClanId);
+                    return;
+                }
 
-            ClanNameChangePatch.RunOriginalChangeClanName(clan, new TextObject(payload.Name), new TextObject(payload.InformalName));
+                ClanNameChangePatch.RunOriginalChangeClanName(clan, new TextObject(payload.Name), new TextObject(payload.InformalName));
 
-            if (ModInformation.IsServer)
-            {
-                network.SendAll(new NetworkChangeClanName(payload.ClanId, payload.Name, payload.InformalName));
-            }
+                if (ModInformation.IsServer)
+                {
+                    network.SendAll(new NetworkChangeClanName(payload.ClanId, payload.Name, payload.InformalName));
+                }
 
-            if (ScreenManager.TopScreen is GauntletClanScreen clanScreen)
-            {
-                clanScreen._dataSource?.RefreshValues();
-            }
+                if (ScreenManager.TopScreen is GauntletClanScreen clanScreen)
+                {
+                    clanScreen._dataSource?.RefreshValues();
+                }
 
-            InformationManager.DisplayMessage(new InformationMessage($"Clan {payload.ClanId} changed name to {payload.Name}"));
+                InformationManager.DisplayMessage(new InformationMessage($"Clan {payload.ClanId} changed name to {payload.Name}"));
+            });
         }
     }
 }
