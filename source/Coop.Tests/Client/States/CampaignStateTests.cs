@@ -2,7 +2,9 @@
 using Common.Messaging;
 using Common.Tests.Utils;
 using Coop.Core.Client;
+using Coop.Core.Client.Messages;
 using Coop.Core.Client.States;
+using Coop.Core.Server.Connections.Messages;
 using Coop.Tests.Mocks;
 using GameInterface.Services.GameState.Messages;
 using Xunit;
@@ -16,6 +18,9 @@ public class CampaignStateTests
     private readonly ClientTestComponent clientComponent;
 
     private TestMessageBroker TestMessageBroker => clientComponent.TestMessageBroker;
+    private TestNetwork TestNetwork => clientComponent.TestNetwork;
+
+    private IClientState stateObservedOnCampaignEntered;
     public CampaignStateTests(ITestOutputHelper output)
     {
         clientComponent = new ClientTestComponent(output);
@@ -76,6 +81,47 @@ public class CampaignStateTests
 
         // Assert
         Assert.Single(TestMessageBroker.GetMessagesFromType<EnterMainMenu>());
+    }
+
+    [Fact]
+    public void ClientCampaignEntered_Subscribers_ObserveCampaignState()
+    {
+        // Arrange
+        TestMessageBroker.Subscribe<ClientCampaignEntered>(Handle_ClientCampaignEntered);
+
+        // Act
+        var campaignState = clientLogic.SetState<CampaignState>();
+
+        // Assert
+        Assert.Same(campaignState, stateObservedOnCampaignEntered);
+    }
+
+    private void Handle_ClientCampaignEntered(MessagePayload<ClientCampaignEntered> payload)
+    {
+        stateObservedOnCampaignEntered = clientLogic.State;
+    }
+
+    [Fact]
+    public void SetState_Publishes_ClientCampaignEntered()
+    {
+        // Act
+        clientLogic.SetState<CampaignState>();
+
+        // Assert
+        Assert.Single(TestMessageBroker.GetMessagesFromType<ClientCampaignEntered>());
+    }
+
+    [Fact]
+    public void SetState_Sends_NetworkPlayerCampaignEntered()
+    {
+        // Arrange
+        var peer = TestNetwork.CreatePeer();
+
+        // Act
+        clientLogic.SetState<CampaignState>();
+
+        // Assert
+        Assert.Single(TestNetwork.GetPeerMessagesFromType<NetworkPlayerCampaignEntered>(peer));
     }
 
     [Fact]
