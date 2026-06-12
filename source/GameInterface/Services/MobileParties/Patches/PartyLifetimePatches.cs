@@ -4,6 +4,7 @@ using Common.Messaging;
 using Common.Util;
 using GameInterface.Policies;
 using GameInterface.Services.Heroes.Patches;
+using GameInterface.Services.MapEvents;
 using GameInterface.Services.MobileParties.Data;
 using GameInterface.Services.MobileParties.Extensions;
 using GameInterface.Services.MobileParties.Messages.Lifetime;
@@ -50,6 +51,8 @@ internal class DestroyPartyActionPatch
         // destroy runs nested inside another action's AllowedThread scope.
         if (IsProtectedPlayerParty(destroyedParty)) return false;
 
+        if (IsProtectedConversationParty(destroyedParty)) return false;
+
         if (CallOriginalPolicy.IsOriginalAllowed()) return true;
 
         if (ModInformation.IsClient)
@@ -76,6 +79,22 @@ internal class DestroyPartyActionPatch
         if (destroyedParty == null || !destroyedParty.IsPlayerParty()) return false;
 
         Logger.Warning("Blocked DestroyPartyAction for player party {partyName}, {StringId}", destroyedParty.Name, destroyedParty.StringId);
+        return true;
+    }
+
+    /// <summary>
+    /// Never destroy a party held in a player's conversation. Campaign time keeps running during co-op
+    /// conversations, so server-side campaign logic (e.g. PatrolPartiesCampaignBehavior culling its
+    /// patrols) can try to destroy the party mid-conversation, leaving the player talking to an empty
+    /// husk and releasing a hold that is never restored. The destroy is dropped; periodic culling
+    /// simply re-attempts after the engagement ends. A held party that entered a map event is no
+    /// longer reported as in-conversation, so the battle's own outcome destroys are unaffected.
+    /// </summary>
+    private static bool IsProtectedConversationParty(MobileParty destroyedParty)
+    {
+        if (!ConversationPartyHold.IsInPlayerConversation(destroyedParty)) return false;
+
+        Logger.Warning("Blocked DestroyPartyAction for party {partyName}, {StringId} held in a player conversation", destroyedParty.Name, destroyedParty.StringId);
         return true;
     }
 

@@ -107,6 +107,41 @@ public class ConversationPartyTrackerTests
     }
 
     [Fact]
+    public void TryEndEngagementByParty_WhenEngaged_EndsAndReturnsEngagement()
+    {
+        tracker.TryBeginEngagement(firstPlayer, "player1", "lord1", wasAiDisabled: false);
+
+        var ended = tracker.TryEndEngagementByParty("lord1", out var engagement);
+
+        Assert.True(ended);
+        Assert.Equal(firstPlayer, engagement.EngagerKey);
+        Assert.False(engagement.WasAiDisabled);
+        Assert.False(tracker.TryGetEngagement("lord1", out _));
+        Assert.True(tracker.IsEmpty);
+    }
+
+    [Fact]
+    public void TryEndEngagementByParty_FreesTheEngagerForNewEngagements()
+    {
+        // The party-side release (it entered a map event) must also clear the player's slot, or the
+        // player could never engage another party for the rest of the session.
+        tracker.TryBeginEngagement(firstPlayer, "player1", "lord1", wasAiDisabled: false);
+        tracker.TryEndEngagementByParty("lord1", out _);
+
+        Assert.True(tracker.TryBeginEngagement(firstPlayer, "player1", "lord2", wasAiDisabled: false));
+    }
+
+    [Fact]
+    public void TryEndEngagementByParty_WhenPartyNotEngaged_Fails()
+    {
+        tracker.TryBeginEngagement(firstPlayer, "player1", "lord1", wasAiDisabled: false);
+
+        Assert.False(tracker.TryEndEngagementByParty("lord2", out _));
+        Assert.False(tracker.TryEndEngagementByParty(null, out _));
+        Assert.True(tracker.TryGetEngagement("lord1", out _));
+    }
+
+    [Fact]
     public void IsEngagedByOther_TrueOnlyForDifferentEngager()
     {
         tracker.TryBeginEngagement(firstPlayer, "player1", "lord1", wasAiDisabled: false);

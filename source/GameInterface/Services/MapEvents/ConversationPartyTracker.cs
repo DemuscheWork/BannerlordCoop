@@ -139,6 +139,30 @@ internal sealed class ConversationPartyTracker : IHandler
         }
     }
 
+    /// <summary>
+    /// Ends the engagement holding the given party, returning it for release. Used when the engagement ends
+    /// from the party's side rather than the player's - the held party entered a <see cref="TaleWorlds.CampaignSystem.MapEvents.MapEvent"/>
+    /// (the conversation escalated into a battle), so the hold has served its purpose.
+    /// </summary>
+    public bool TryEndEngagementByParty(string partyId, out Engagement engagement)
+    {
+        engagement = default;
+
+        if (partyId == null) return false;
+
+        lock (stateLock)
+        {
+            if (!engagementsByPartyId.TryGetValue(partyId, out engagement))
+                return false;
+
+            engagementsByPartyId.Remove(partyId);
+            partyIdsByEngager.Remove(engagement.EngagerKey);
+
+            isEmpty = engagementsByPartyId.Count == 0;
+            return true;
+        }
+    }
+
     /// <summary>Gets the engagement holding the given party, if any.</summary>
     public bool TryGetEngagement(string partyId, out Engagement engagement)
     {

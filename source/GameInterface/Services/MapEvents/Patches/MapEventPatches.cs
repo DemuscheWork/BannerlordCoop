@@ -157,6 +157,33 @@ internal class MapEventPatches
     }
 }
 
+/// <summary>
+/// Releases a conversation hold when the held party enters a <see cref="MapEvent"/> (#1308): the engaging
+/// player attacked out of the conversation, so the hold has served its purpose. With the engagement gone,
+/// the destroy-while-engaged guard cannot block the battle's own outcome (e.g. destroying the defeated
+/// party) after the map event detaches.
+/// </summary>
+[HarmonyPatch(typeof(PartyBase))]
+internal class ConversationHoldReleasePatches
+{
+    [HarmonyPatch(nameof(PartyBase.MapEventSide), MethodType.Setter)]
+    [HarmonyPostfix]
+    private static void Postfix_SetMapEventSide(PartyBase __instance, MapEventSide value)
+    {
+        if (ModInformation.IsClient) return;
+
+        // Only entering a map event releases the hold; leaving one (value == null) is the normal
+        // battle teardown.
+        if (value == null) return;
+
+        var mobileParty = __instance.MobileParty;
+        if (mobileParty == null) return;
+
+        // IsEmpty short-circuits inside; this setter is hot during battles.
+        ConversationPartyHold.EndEngagementForParty(mobileParty);
+    }
+}
+
 [HarmonyPatch]
 internal class InteractionPatches
 {

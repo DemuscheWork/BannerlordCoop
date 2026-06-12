@@ -71,6 +71,27 @@ internal static class ConversationPartyHold
     }
 
     /// <summary>
+    /// [Server] Ends the engagement holding the given party, if any - the conversation escalated into a battle,
+    /// so the hold has served its purpose and MapEvent state takes over. Releasing here also keeps the
+    /// destroy-while-engaged guard from misfiring on battle-outcome destroys once the map event detaches.
+    /// </summary>
+    public static void EndEngagementForParty(MobileParty party)
+    {
+        var tracker = ConversationPartyTracker.Instance;
+        if (tracker == null || tracker.IsEmpty) return;
+
+        if (party?.Party == null) return;
+
+        var objectManager = tracker.ObjectManager;
+        if (objectManager == null) return;
+        if (!objectManager.TryGetId(party.Party, out var partyId)) return;
+
+        if (!tracker.TryEndEngagementByParty(partyId, out var engagement)) return;
+
+        ReleaseParty(objectManager, partyId, engagement.WasAiDisabled);
+    }
+
+    /// <summary>
     /// [Server] True when the target party is held in a player's conversation and the interacting party is not the
     /// engaging player's own party, so the map interaction must be blocked.
     /// </summary>
