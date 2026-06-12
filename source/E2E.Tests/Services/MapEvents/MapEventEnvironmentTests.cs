@@ -272,6 +272,34 @@ public class MapEventEnvironmentTests : MapEventTestBase
     }
 
     [Fact]
+    public void CaptorDefeated_DoubleRelease_DoesNotDuplicateHeroInRoster()
+    {
+        // Arrange — the player loses a battle and is taken prisoner; capture parks the player party.
+        var (heroId, partyId) = CreatePlayerHeroParty("MyControllerId");
+        var captorPartyId = TestEnvironment.CreateRegisteredObject<MobileParty>();
+        DefeatPlayerPartyInBattle(heroId, partyId, captorPartyId);
+
+        AssertCaptivity(Server, heroId, captorPartyId);
+
+        // Act — the same captivity produces two releases (reachable live through the
+        // client-requested and the server-initiated paths); the second must be a no-op.
+        ReleasePlayerAfterCaptorDefeated(heroId);
+        ReleasePlayerAfterCaptorDefeated(heroId);
+
+        // Assert — the player is freed and its party restored...
+        AssertCaptivity(Server, heroId, null);
+        AssertPlayerPartyRestored(Server, heroId, partyId);
+
+        // ...with the hero in the roster exactly once. A re-entrant release used to run
+        // AddElementToMemberRoster again, leaving a phantom extra troop (#1343).
+        AssertHeroCountInPartyRoster(Server, heroId, partyId, 1);
+        foreach (var client in Clients)
+        {
+            AssertHeroCountInPartyRoster(client, heroId, partyId, 1);
+        }
+    }
+
+    [Fact]
     public void ServerEndCaptivity_OfPlayerHero_SyncAllClients()
     {
         // Arrange

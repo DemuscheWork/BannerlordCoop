@@ -212,6 +212,17 @@ internal class PlayerCaptivityServerHandler : IHandler
     /// </summary>
     private void ReleasePlayerFromCaptivity(Hero playerHero, MobileParty playerParty, EndCaptivityDetail detail, Hero facilitator, CampaignVec2 releasePosition)
     {
+        // The same captivity can produce two releases (the client-requested path and a
+        // server-initiated one); the second pass would add the hero to the member roster
+        // again, leaving a phantom extra troop. Once the hero has no captor and the party
+        // is back on the map, there is nothing left to release.
+        if (playerHero.PartyBelongedToAsPrisoner == null && playerParty.IsActive)
+        {
+            PlayerCaptivityLogger.Debug("ReleasePlayerFromCaptivity: skipping, hero {HeroId} is not captive and party {PartyId} is already active",
+                playerHero.StringId, playerParty.StringId);
+            return;
+        }
+
         // Snapshot the captor before the release: clearing the captivity below nulls
         // PartyBelongedToAsPrisoner, and a captor defeated in battle may already be inactive.
         PartyBase captorParty = playerHero.PartyBelongedToAsPrisoner;
@@ -231,7 +242,13 @@ internal class PlayerCaptivityServerHandler : IHandler
                 playerHero.HitPoints = playerHero.MaxHitPoints;
             }
 
-            playerParty.AddElementToMemberRoster(playerHero.CharacterObject, 1, true);
+            // AddElementToMemberRoster on a roster that already holds the hero increments the
+            // element count instead of failing, so only add the hero if it is actually missing
+            // (capture clears the roster, but a re-entrant release would find it restored).
+            if (playerParty.MemberRoster.Contains(playerHero.CharacterObject) == false)
+            {
+                playerParty.AddElementToMemberRoster(playerHero.CharacterObject, 1, true);
+            }
             playerParty.ChangePartyLeader(playerHero);
         }
         if (playerHero.CurrentSettlement != null)

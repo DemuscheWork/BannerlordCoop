@@ -484,6 +484,25 @@ public abstract class MapEventTestBase : IDisposable
         });
     }
 
+    /// <summary>
+    /// Asserts the hero <paramref name="heroId"/> appears in its party <paramref name="partyId"/>'s
+    /// member roster with exactly <paramref name="expectedCount"/> troops on the given
+    /// <paramref name="instance"/> — a doubled captivity release leaves the hero counted twice (#1343).
+    /// </summary>
+    protected void AssertHeroCountInPartyRoster(EnvironmentInstance instance, string heroId, string partyId, int expectedCount)
+    {
+        instance.Call(() =>
+        {
+            Assert.True(instance.ObjectManager.TryGetObject<Hero>(heroId, out var hero));
+            Assert.True(instance.ObjectManager.TryGetObject<MobileParty>(partyId, out var party));
+
+            var actualCount = party.MemberRoster.GetTroopCount(hero.CharacterObject);
+            Assert.True(
+                expectedCount == actualCount,
+                $"Hero {heroId} should appear {expectedCount} time(s) in party {partyId}'s roster on {instance.GetType().Name} but appears {actualCount} time(s) (total men: {party.MemberRoster.TotalManCount})");
+        });
+    }
+
     // ------------------------------------------------------------------
     // PlayerEncounter
     // ------------------------------------------------------------------
