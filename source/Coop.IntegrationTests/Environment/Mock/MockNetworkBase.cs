@@ -2,6 +2,7 @@
 using Common.Network;
 using Common.PacketHandlers;
 using Common.Tests.Utils;
+using Coop.Core.Client.Network;
 using Coop.IntegrationTests.Environment.Extensions;
 using LiteNetLib;
 
@@ -11,12 +12,14 @@ public abstract class MockNetworkBase : INetwork
 {
     private readonly TestNetworkRouter networkOrchestrator;
     private readonly IPacketManager packetManager;
+    private readonly ILoadingPacketBuffer loadingPacketBuffer;
     public static int InstanceCount = 0;
 
-    public MockNetworkBase(TestNetworkRouter networkOrchestrator, IPacketManager packetManager)
+    public MockNetworkBase(TestNetworkRouter networkOrchestrator, IPacketManager packetManager, ILoadingPacketBuffer loadingPacketBuffer = null)
     {
         this.networkOrchestrator = networkOrchestrator;
         this.packetManager = packetManager;
+        this.loadingPacketBuffer = loadingPacketBuffer;
         InstanceCount = Interlocked.Increment(ref InstanceCount);
 
         NetPeer = NetPeerExtensions.CreatePeer(InstanceCount);
@@ -31,7 +34,35 @@ public abstract class MockNetworkBase : INetwork
     public MessageCollection NetworkSentMessages { get; } = new MessageCollection();
     public PacketCollection NetworkSentPackets { get; } = new PacketCollection();
 
-    public void ReceiveFromNetwork(NetPeer peer, IPacket packet) => packetManager.HandleReceive(peer, packet);
+    public void ReceiveFromNetwork(NetPeer peer, IPacket packet)
+    {
+        // Mirror CoopClient.OnNetworkReceive: the loading buffer sees every incoming packet first,
+        // so integration tests exercise the same gate as production (#1329). Server instances have
+        // no buffer and handle directly.
+        if (loadingPacketBuffer?.Intercept(peer, packet) == true) return;
+
+        packetManager.HandleReceive(peer, packet);
+    }
+
+    /// <summary>
+    /// Mirror of the drain step of <c>CoopClient.Update</c>: replays buffered packets batch by
+    /// batch until the backlog is empty. No-op for instances without a loading buffer.
+    /// </summary>
+    public void PumpBufferedPackets()
+    {
+        if (loadingPacketBuffer == null) return;
+
+        while (true)
+        {
+            var batch = loadingPacketBuffer.DrainIfRequested();
+            if (batch.Count == 0) break;
+
+            foreach (var (peer, packet) in batch)
+            {
+                packetManager.HandleReceive(peer, packet);
+            }
+        }
+    }
 
     public void Send(NetPeer netPeer, IPacket packet)
     {

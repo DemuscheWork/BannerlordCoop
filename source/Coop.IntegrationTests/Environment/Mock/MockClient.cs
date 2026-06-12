@@ -1,5 +1,6 @@
 ﻿using Common.PacketHandlers;
 using Coop.Core.Client;
+using Coop.Core.Client.Network;
 using LiteNetLib;
 using System.Net;
 using System.Net.Sockets;
@@ -8,8 +9,8 @@ namespace Coop.IntegrationTests.Environment.Mock;
 
 public class MockClient : MockNetworkBase, ICoopClient
 {
-    public MockClient(TestNetworkRouter networkOrchestrator, IPacketManager packetManager) : 
-        base(networkOrchestrator, packetManager)
+    public MockClient(TestNetworkRouter networkOrchestrator, IPacketManager packetManager, ILoadingPacketBuffer loadingPacketBuffer) :
+        base(networkOrchestrator, packetManager, loadingPacketBuffer)
     {
     }
 

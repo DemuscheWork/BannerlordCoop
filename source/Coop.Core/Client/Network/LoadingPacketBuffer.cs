@@ -1,7 +1,9 @@
+using Common.Logging;
 using Common.Messaging;
 using Common.PacketHandlers;
 using Coop.Core.Client.Messages;
 using LiteNetLib;
+using Serilog;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -25,8 +27,12 @@ namespace Coop.Core.Client.Network;
 /// <item>While armed, every packet except the save and <see cref="PacketType.PacketWrapper"/> is
 /// queued. This is deadlock-safe: the client's load is driven by local game-state events and needs
 /// no further incoming packet to finish.</item>
-/// <item>On <see cref="ClientCampaignEntered"/> the queue is drained in FIFO order and buffering
-/// stops.</item>
+/// <item>On <see cref="ClientCampaignEntered"/> the queue is drained in FIFO order, at most
+/// <see cref="MaxDrainBatchSize"/> packets per poller update so a long join's backlog is replayed
+/// over a few frames instead of one long synchronous stall; packets arriving between batches keep
+/// queueing behind the backlog so ordering is preserved. Buffering stops once the backlog is empty.
+/// The backlog size is logged when replay starts, and a warning fires at doubling thresholds while
+/// it grows, so a pathologically slow join is observable (#1329).</item>
 /// </list>
 /// Leaving coop (disconnect/abort) is not handled here: this buffer is scoped to the coop container,
 /// so it is disposed when the container is torn down and a reconnect builds a fresh one. It must NOT
@@ -55,11 +61,26 @@ public interface ILoadingPacketBuffer
 
 internal sealed class LoadingPacketBuffer : ILoadingPacketBuffer, IDisposable
 {
+    /// <summary>
+    /// Upper bound on packets replayed per <see cref="DrainIfRequested"/> call (one poller update),
+    /// so a large join backlog is spread over a few frames instead of one long synchronous stall.
+    /// </summary>
+    internal const int MaxDrainBatchSize = 512;
+
+    /// <summary>First backlog size that logs a warning; doubles after each warning to avoid spam.</summary>
+    internal const int InitialBacklogWarnThreshold = 1024;
+
+    private static readonly ILogger Logger = LogManager.GetLogger<LoadingPacketBuffer>();
+
     private readonly IMessageBroker messageBroker;
     private readonly ConcurrentQueue<(NetPeer, IPacket)> queue = new();
 
     private volatile bool buffering;
     private volatile bool drainRequested;
+
+    // Poller-thread only (like the queue's producers/consumer).
+    private bool draining;
+    private int backlogWarnThreshold = InitialBacklogWarnThreshold;
 
     public LoadingPacketBuffer(IMessageBroker messageBroker)
     {
@@ -87,21 +108,48 @@ internal sealed class LoadingPacketBuffer : ILoadingPacketBuffer, IDisposable
         if (packet.PacketType == PacketType.PacketWrapper) return false;
 
         queue.Enqueue((peer, packet));
+
+        // The backlog is unbounded by design (dropping deltas would desync the client), so make a
+        // pathological one observable instead: warn at doubling thresholds while it grows.
+        if (queue.Count >= backlogWarnThreshold)
+        {
+            Logger.Warning(
+                "Loading packet backlog reached {Count} packets while the campaign loads",
+                queue.Count);
+            backlogWarnThreshold *= 2;
+        }
+
         return true;
     }
 
     public IReadOnlyList<(NetPeer Peer, IPacket Packet)> DrainIfRequested()
     {
-        if (!drainRequested) return Array.Empty<(NetPeer, IPacket)>();
+        if (drainRequested)
+        {
+            drainRequested = false;
+            draining = true;
+            Logger.Information(
+                "Campaign ready — replaying {Count} buffered packets in batches of up to {BatchSize}",
+                queue.Count, MaxDrainBatchSize);
+        }
 
-        drainRequested = false;
-        buffering = false;
+        if (!draining) return Array.Empty<(NetPeer, IPacket)>();
 
         var drained = new List<(NetPeer, IPacket)>();
-        while (queue.TryDequeue(out var item))
+        while (drained.Count < MaxDrainBatchSize && queue.TryDequeue(out var item))
         {
             drained.Add(item);
         }
+
+        // Keep buffering while batches remain so live packets queue behind the undrained backlog
+        // and ordering is preserved; only an empty queue ends the replay.
+        if (queue.IsEmpty)
+        {
+            draining = false;
+            buffering = false;
+            backlogWarnThreshold = InitialBacklogWarnThreshold;
+        }
+
         return drained;
     }
 

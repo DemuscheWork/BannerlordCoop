@@ -74,6 +74,32 @@ public class LoadingPacketBufferTests
     }
 
     [Fact]
+    public void Drain_SpreadsLargeBacklogAcrossBatches()
+    {
+        buffer.Intercept(null, new FakePacket(PacketType.SaveData)); // arm
+
+        var total = LoadingPacketBuffer.MaxDrainBatchSize + 3;
+        for (int i = 0; i < total; i++)
+        {
+            Assert.True(buffer.Intercept(null, new FakePacket(PacketType.Message)));
+        }
+
+        messageBroker.Publish(this, new ClientCampaignEntered());
+
+        // One poller update drains at most a batch, so a long join cannot stall a single frame.
+        Assert.Equal(LoadingPacketBuffer.MaxDrainBatchSize, buffer.DrainIfRequested().Count);
+
+        // The backlog is not empty yet, so live packets must keep queueing behind it.
+        Assert.True(buffer.Intercept(null, new FakePacket(PacketType.Message)));
+
+        // The next update drains the remainder (3 + the packet that arrived between batches)...
+        Assert.Equal(4, buffer.DrainIfRequested().Count);
+
+        // ...and only then does buffering disarm.
+        Assert.False(buffer.Intercept(null, new FakePacket(PacketType.Message)));
+    }
+
+    [Fact]
     public void MainMenuEntered_DuringLoad_DoesNotDisarmOrClear()
     {
         // ReceivingSavedDataState fires MainMenuEntered as an intermediate step of the join (it clears
