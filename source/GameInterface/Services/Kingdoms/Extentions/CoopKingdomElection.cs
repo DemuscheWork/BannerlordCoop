@@ -27,6 +27,17 @@ namespace GameInterface.Services.Kingdoms.Extentions
             this.randomFloat = randomFloat;
         }
 
+        /// <summary>
+        /// Coop equivalent of vanilla <see cref="KingdomElection.StartElectionWithoutPlayer"/>: resolves the
+        /// decision by AI choice even when a player clan is a supporter, used when the sweep concludes a
+        /// decision whose voting period is over.
+        /// </summary>
+        public void StartElectionWithoutPlayerCoop()
+        {
+            this._ignorePlayerSupport = true;
+            StartElectionCoop();
+        }
+
         public void StartElectionCoop()
         {
             this.Setup();

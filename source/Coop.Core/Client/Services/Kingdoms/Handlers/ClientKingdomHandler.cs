@@ -19,6 +19,14 @@ public class ClientKingdomHandler : IHandler
         this.network = network;
         messageBroker.Subscribe<NetworkAddDecision>(HandleNetworkAddDecision);
         messageBroker.Subscribe<NetworkRemoveDecision>(HandleNetworkRemoveDecision);
+        messageBroker.Subscribe<NetworkConcludeDecision>(HandleNetworkConcludeDecision);
+    }
+
+    private void HandleNetworkConcludeDecision(MessagePayload<NetworkConcludeDecision> obj)
+    {
+        var payload = obj.What;
+        var message = new ConcludeDecision(payload.KingdomId, payload.Index, payload.RandomNumber);
+        messageBroker.Publish(this, message);
     }
 
     private void HandleNetworkRemoveDecision(MessagePayload<NetworkRemoveDecision> obj)
@@ -39,6 +47,7 @@ public class ClientKingdomHandler : IHandler
     {
         messageBroker.Unsubscribe<NetworkAddDecision>(HandleNetworkAddDecision);
         messageBroker.Unsubscribe<NetworkRemoveDecision>(HandleNetworkRemoveDecision);
+        messageBroker.Unsubscribe<NetworkConcludeDecision>(HandleNetworkConcludeDecision);
     }
 }
 

@@ -1,4 +1,5 @@
 ﻿using Common;
+using Common.Logging;
 using Common.Messaging;
 using Common.Util;
 using GameInterface.Extentions;
@@ -6,6 +7,7 @@ using GameInterface.Policies;
 using GameInterface.Services.Kingdoms.Extentions;
 using GameInterface.Services.Kingdoms.Messages;
 using HarmonyLib;
+using Serilog;
 using System.Linq;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Actions;
@@ -20,6 +22,8 @@ namespace GameInterface.Services.Kingdoms.Patches
     [HarmonyPatch(typeof(Kingdom))]
     internal class KingdomPatches
     {
+        private static readonly ILogger Logger = LogManager.GetLogger<KingdomPatches>();
+
         [HarmonyPatch(nameof(Kingdom.AddDecision))]
         [HarmonyPrefix]
         public static bool AddDecisionPrefix(Kingdom __instance, KingdomDecision kingdomDecision, bool ignoreInfluenceCost)
@@ -68,6 +72,16 @@ namespace GameInterface.Services.Kingdoms.Patches
                 CoopKingdomElection election = new CoopKingdomElection(kingdomDecision, randomFloat);
                 election.StartElectionCoop();
                 return election.RandomFloat;
+            }
+
+            // The queue predicate has been observed matching sessions where no client visibly belongs
+            // to the kingdom (#1344); record exactly which party matched so a stale controlled-objects
+            // entry or unexpected clan/kingdom state is visible in the logs.
+            foreach (var party in playerParties.Where(party => party.ActualClan.Kingdom == kingdomDecision.Kingdom))
+            {
+                Logger.Debug(
+                    "Queueing {decision} for {kingdom}: player party {party} matched with clan {clan}",
+                    kingdomDecision.GetType().Name, __instance.StringId, party.StringId, party.ActualClan.StringId);
             }
 
             __instance._unresolvedDecisions.Add(kingdomDecision);

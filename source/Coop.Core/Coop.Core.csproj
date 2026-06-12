@@ -96,6 +96,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Server\Services\Kingdoms\Messages\NetworkAddDecision.cs" />
+    <Compile Include="Server\Services\Kingdoms\Messages\NetworkConcludeDecision.cs" />
     <Compile Include="Server\Services\Kingdoms\Messages\NetworkRemoveDecision.cs" />
   </ItemGroup>
   <ItemGroup>

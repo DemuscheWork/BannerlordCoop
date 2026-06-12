@@ -1,5 +1,7 @@
-﻿using Common.Logging;
+﻿using Common;
+using Common.Logging;
 using Common.Messaging;
+using GameInterface.Services.Kingdoms.Extentions;
 using GameInterface.Services.Kingdoms.Messages;
 using GameInterface.Services.Kingdoms.Patches;
 using GameInterface.Services.ObjectManager;
@@ -28,6 +30,43 @@ public class KingdomHandler : IHandler
         this.objectManager = objectManager;
         messageBroker.Subscribe<AddDecision>(HandleAddDecision);
         messageBroker.Subscribe<RemoveDecision>(HandleRemoveDecision);
+        messageBroker.Subscribe<ConcludeDecision>(HandleConcludeDecision);
+    }
+
+    private void HandleConcludeDecision(MessagePayload<ConcludeDecision> obj)
+    {
+        var payload = obj.What;
+
+        if (!objectManager.TryGetObject(payload.KingdomId, out Kingdom kingdom))
+        {
+            Logger.Verbose("Kingdom not found in KingdomDecisionHandler with KingdomId: {id}", payload.KingdomId);
+            return;
+        }
+
+        // Kingdoms created on clients skip the constructor, so the list can be null.
+        var decisions = kingdom._unresolvedDecisions;
+        if (decisions == null)
+        {
+            Logger.Verbose("Kingdom {id} has no unresolved decision list.", payload.KingdomId);
+            return;
+        }
+
+        if (payload.Index < 0 || decisions.Count <= payload.Index)
+        {
+            Logger.Verbose("Index is out of bounds of the list.");
+            return;
+        }
+
+        var decision = decisions[payload.Index];
+
+        // Replay the server's election with its random roll; the election's own removal of the
+        // decision is suppressed on clients, the queue entry goes away through the server's
+        // RemoveDecision broadcast that follows.
+        GameLoopRunner.RunOnMainThread(() =>
+        {
+            var election = new CoopKingdomElection(decision, payload.RandomNumber);
+            election.StartElectionWithoutPlayerCoop();
+        }, true);
     }
 
     private void HandleRemoveDecision(MessagePayload<RemoveDecision> obj)
@@ -82,5 +121,6 @@ public class KingdomHandler : IHandler
     {
         messageBroker.Unsubscribe<AddDecision>(HandleAddDecision);
         messageBroker.Unsubscribe<RemoveDecision>(HandleRemoveDecision);
+        messageBroker.Unsubscribe<ConcludeDecision>(HandleConcludeDecision);
     }
 }
