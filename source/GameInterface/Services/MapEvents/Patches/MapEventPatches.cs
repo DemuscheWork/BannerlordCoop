@@ -100,12 +100,6 @@ internal class MapEventPatches
         return true;
     }
 
-    [HarmonyPatch(nameof(MapEvent.Update))]
-    [HarmonyPrefix]
-    // Disable update on clients
-    private static bool PrefixUpdate() => ModInformation.IsServer;
-
-
     [HarmonyPatch(nameof(MapEvent.OnBattleWon))]
     [HarmonyPrefix]
     private static bool Prefix_OnBattleWon(MapEvent __instance)
@@ -125,14 +119,16 @@ internal class MapEventPatches
     }
 
     [HarmonyPrefix]
-    [HarmonyPatch("Update")]
+    [HarmonyPatch(nameof(MapEvent.Update))]
     static bool PrefixUpdate(MapEvent __instance)
     {
-        if (CallOriginalPolicy.IsOriginalAllowed())
-            return true;
-
+        // Clients never run MapEvent.Update, even under an allowed thread; the
+        // server is the only authority on map event progression
         if (ModInformation.IsClient)
             return false;
+
+        if (CallOriginalPolicy.IsOriginalAllowed())
+            return true;
 
         // Skip if any parties are not set
         if (__instance.InvolvedParties.Any(x => x?.MobileParty is null))
